@@ -1,7 +1,4 @@
-# Jujun Huang
-# For tracking text change project
-# simple siamese model for server
-
+# %%
 # initialization
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -22,6 +19,7 @@ import torch
 import pandas as pd
 from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForSequenceClassification
 import torch.nn as nn
+from torchinfo import summary
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, random_split
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
@@ -44,11 +42,7 @@ def get_free_gpu():
     # print(f'free     : {info.free// 1024 ** 2}')
     # print(f'used     : {info.used// 1024 ** 2}')
 
-
-
-
-# Put everything together as a function. This is for pretrained word vectors
-
+# %%
 def get_pretrained_wordvector(sentences, tokenizer, bert_model, max_len=100):
 
     input_ids = []
@@ -109,8 +103,8 @@ def get_pretrained_wordvector(sentences, tokenizer, bert_model, max_len=100):
     del input_ids
     return token_embeddings, attention_masks
 
-
-def get_text_embedding(cik, fyear, fyear_bf, tokenizer, bert_model, num_para,  wrd_len=100):
+# %%
+def get_text_embedding(cik, fyear, fyear_bf, tokenizer, bert_model, para_map, para_len, wrd_len=100):
     # print(cik, fyear, fyear_bf)
     df = pd.concat({k: pd.Series(v) for k, v in para_map[cik].items()})
     df = df.reset_index()
@@ -124,12 +118,12 @@ def get_text_embedding(cik, fyear, fyear_bf, tokenizer, bert_model, num_para,  w
     token_embeddings = token_embeddings.to(device) * masks.unsqueeze(-1).to(device) # (atc_num_para, #wrd_len, #dim)
     # padding paragraphs
     # print('1 token_embeddings',token_embeddings.size())
-    pad_num = num_para - token_embeddings.size()[0]
+    pad_num = para_len - token_embeddings.size()[0]
     if pad_num>0:
         token_embeddings = F.pad(input=token_embeddings, pad=(0,0,0,0,0,pad_num))
         # print('2 token_embeddings',token_embeddings.size())
     elif pad_num<0:
-        token_embeddings = token_embeddings[0:60]
+        token_embeddings = token_embeddings[0:para_len]
         # print('2 token_embeddings',token_embeddings.size())
     else:
         token_embeddings = token_embeddings
@@ -139,7 +133,7 @@ def get_text_embedding(cik, fyear, fyear_bf, tokenizer, bert_model, num_para,  w
     token_embeddings_bf = token_embeddings_bf.to(device) * masks_bf.unsqueeze(-1).to(device) # (atc_num_para, #wrd_len, #dim)
     # padding paragraphs
     # print('1 token_embeddings_bf',token_embeddings_bf.size())
-    pad_num_bf = num_para - token_embeddings_bf.size()[0]
+    pad_num_bf = para_len - token_embeddings_bf.size()[0]
     #print('pad_num_bf', pad_num_bf)
     if pad_num_bf>0:
         # print('>0')
@@ -147,7 +141,7 @@ def get_text_embedding(cik, fyear, fyear_bf, tokenizer, bert_model, num_para,  w
         # print('2 token_embeddings_bf',token_embeddings_bf.size())
     elif pad_num_bf<0:
         # print('<0')
-        token_embeddings_bf = token_embeddings_bf[0:60]
+        token_embeddings_bf = token_embeddings_bf[0:para_len]
         # print('2 token_embeddings_bf',token_embeddings_bf.size())
     else:
         token_embeddings_bf = token_embeddings_bf
@@ -155,6 +149,7 @@ def get_text_embedding(cik, fyear, fyear_bf, tokenizer, bert_model, num_para,  w
     return token_embeddings, token_embeddings_bf
 
 
+# %%
 # define model
 class simple_siamese(nn.Module):
     def __init__(self, emb_dim, wrd_len, num_filters, kernel_sizes, kernel_sizes2, num_classes=2.0, dropout_rate = 0.3):
@@ -168,12 +163,12 @@ class simple_siamese(nn.Module):
         self.num_classes = num_classes
 
         self.conv = nn.Sequential(
-            nn.Conv2d(768, 256, kernel_size = kernel_sizes), # input (#batch, 768, num_para->60, num_words->100) # kernal size = 10,50  # output: (#batch, 256, 50, 50)
+            nn.Conv2d(768, 128, kernel_size = kernel_sizes), # input (#batch, 768, num_para->60, num_words->100) # kernal size = 10,50  # output: (#batch, 256, 50, 50)
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(5, padding=0),  # input (#batch, 256, 50, 50) #output (#batch, 256, 10, 10)
-            nn.Conv2d(256, 128,  kernel_size = kernel_sizes2), # input (#batch, 256, num_para->10, num_words->10) # kernal size = 3,3
+            nn.MaxPool2d(3, padding=0),  # input (#batch, 256, 50, 50) #output (#batch, 256, 10, 10)
+            nn.Conv2d(128, 64,  kernel_size = kernel_sizes2), # input (#batch, 256, num_para->10, num_words->10) # kernal size = 3,3
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(3, padding=0),
+            nn.MaxPool2d(2, padding=0),
             nn.ReLU(), 
         )
 
@@ -192,16 +187,40 @@ class simple_siamese(nn.Module):
         x2 = self.conv(x2)
         x = torch.sub(x1,x2)
 
-        x = self.dropout(x)
+        
         # print(x.size())
         x = torch.reshape(x,(x.size()[0],-1))
         # print(x.size())
+        x = self.dropout(x)
         logit = self.fc(x)
         # print('model output',logit.size())
 
         return logit   
 
 
+# %% [markdown]
+# 
+
+# %%
+emb_dim = 768
+wrd_len = 50 #100
+para_len = 30 #60
+num_filters = 128
+kernel_sizes =  (10,10)
+kernel_sizes2 =  (1,1) #(2,2)
+dropout_rate = 0.5
+num_classes=2.0
+batch_size = 32
+# para_map = para_map
+class_weight = 1
+model = simple_siamese( emb_dim, wrd_len, num_filters, kernel_sizes, \
+    kernel_sizes2, num_classes=num_classes,dropout_rate=dropout_rate)
+#summary(model [(32, 30, 50, 768), (32, 30, 50, 768)])
+
+# %%
+summary(model, [(32, 30, 50, 768), (32, 30, 50, 768)])
+
+# %%
 def model_eval(model, validation_dataloader, num_labels, class_weight=None):
     #tokenized_texts = []
     true_labels = []
@@ -223,13 +242,14 @@ def model_eval(model, validation_dataloader, num_labels, class_weight=None):
         tk_batch_bf = []
         #print('val batch',batch)
         for t in b_input_key.detach().to('cpu').numpy():
-            tk, tk_bf = get_text_embedding(t[0], t[1], t[2], tokenizer, bert_model, para_len, wrd_len=100)
-            if tk.size()[0] == 60:              
+            tk, tk_bf = get_text_embedding(t[0], t[1], t[2], tokenizer, bert_model, para_map, para_len, wrd_len=wrd_len)
+            if tk.size()[0] == para_len:              
                 tk_batch.append(tk)
                 tk_batch_bf.append(tk_bf)
             else:
                 print('token size error')
                 break
+            
 
         tk_batch = torch.stack(tk_batch)
         tk_batch = tk_batch.to(device)
@@ -278,8 +298,8 @@ def model_eval(model, validation_dataloader, num_labels, class_weight=None):
 
     return  pred_labels, true_labels, avg_val_loss
 
-
-def train_model(model, num_labels, para_len, train_dataloader, validation_dataloader, model_path,\
+# %%
+def train_model(model, num_labels, para_len, wrd_len, train_dataloader, validation_dataloader, model_path,\
                              optimizer=None, scheduler=None, epochs = 10, \
                              class_weight = None, patience = 5):
 
@@ -302,7 +322,7 @@ def train_model(model, num_labels, para_len, train_dataloader, validation_datalo
     total_t0 = time.time()
 
     if optimizer == None:
-        optimizer = torch.optim.Adam(model.parameters())
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
 
     # For each epoch...
     for epoch_i in range(0, epochs):
@@ -313,9 +333,9 @@ def train_model(model, num_labels, para_len, train_dataloader, validation_datalo
 
         # Perform one full pass over the training set.
 
-        #print("")
-        #print('======== Epoch {:} / {:} ========'.format(epoch_i + 1, epochs))
-        #print('Training...')
+        print("")
+        print('======== Epoch {:} / {:} ========'.format(epoch_i + 1, epochs))
+        print('Training...')
 
         # Measure how long the training epoch takes.
         t0 = time.time()
@@ -332,22 +352,26 @@ def train_model(model, num_labels, para_len, train_dataloader, validation_datalo
             #   [1]: labels
             
             # print('1 free gpu',get_free_gpu())
-            b_input_key = batch[0]
+            b_input_key = batch[0] # batch_size * (cik, fyear, fyear_bf)
             b_labels = batch[1].to(device)
             
             
             #convert key to text embedding
             tk_batch = []
             tk_batch_bf = []
-            # print('b_input_key',b_input_key)
+            #print('b_input_key',b_input_key)
+            time_start_tk = time.time()
             for t in b_input_key.detach().to('cpu').numpy():
-                tk, tk_bf = get_text_embedding(t[0], t[1], t[2], tokenizer, bert_model, para_len, wrd_len=100)
-                if tk.size()[0] == 60:              
+                tk, tk_bf = get_text_embedding(t[0], t[1], t[2], tokenizer, bert_model, para_map, para_len, wrd_len=wrd_len)
+                if tk.size()[0] == para_len:              
                     tk_batch.append(tk)
                     tk_batch_bf.append(tk_bf)
+                    # print(len(tk_batch), len(tk_batch_bf))
                 else:
                     print('token size error')
                     break
+            # print(len(tk_batch), len(tk_batch_bf))
+            # print("----- token %s seconds -----" % (time.time() - time_start_tk))
                 
             tk_batch = torch.stack(tk_batch)
             tk_batch = tk_batch.to(device)
@@ -357,6 +381,7 @@ def train_model(model, num_labels, para_len, train_dataloader, validation_datalo
             #  print('2 free gpu',get_free_gpu())
             model.zero_grad()
 
+            time_start_batch_train = time.time()
             logits = model(tk_batch,tk_batch_bf)
             #print("logits shape: ", b_input_ids.size(), b_labels.size(), logits.shape())
             #loss_func = BCELoss()
@@ -387,7 +412,7 @@ def train_model(model, num_labels, para_len, train_dataloader, validation_datalo
 
             loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
 
             optimizer.step()
 
@@ -399,12 +424,12 @@ def train_model(model, num_labels, para_len, train_dataloader, validation_datalo
         avg_train_loss = total_train_loss / len(train_dataloader)
 
         # Measure how long this epoch took.
-        training_time = time.ctime(time.time() - t0)
-        print("Total training_time took {:} (h:mm:ss)".format(training_time))
+        training_time = time.time() - t0
+        print("Total training_time took {0:.2f} minutes ".format(training_time/60))
 
-        #print("")
-        #print("  Average training loss: {0:.2f}".format(avg_train_loss))
-        #print("  Training epcoh took: {:}".format(training_time))
+            #print("")
+            #print("  Average training loss: {0:.2f}".format(avg_train_loss))
+            #print("  Training epcoh took: {:}".format(training_time))
 
         # ========================================
         #               Validation
@@ -412,79 +437,89 @@ def train_model(model, num_labels, para_len, train_dataloader, validation_datalo
         # After the completion of each training epoch, measure our performance on
         # our validation set.
 
-        #print("")
-        #print("Running Validation...")
+        testing = False
 
-        t0 = time.time()
+        if testing:
+            print("")
+            print("Running Validation...")
 
-        # Put the model in evaluation mode--the dropout layers behave differently
-        # during evaluation.
-        model.eval()
+            t1 = time.time()
 
-        pred_labels, true_labels, avg_val_loss = model_eval(
-            model,  validation_dataloader, num_labels, class_weight=class_weight)
+            # Put the model in evaluation mode--the dropout layers behave differently
+            # during evaluation.
+            model.eval()
 
-        pred_bools = np.argmax(pred_labels, axis=1)
-        true_bools = np.argmax(true_labels, axis=1)
+            pred_labels, true_labels, avg_val_loss = model_eval(
+                model,  validation_dataloader, num_labels, class_weight=class_weight)
 
-        val_f1 = f1_score(true_bools, pred_bools, average=None) * 100
-        val_f1 = val_f1[1]  # return f1 for  class 1
-        val_acc = (
-            pred_bools == true_bools).astype(int).sum() / len(pred_bools)
+            pred_bools = np.argmax(pred_labels, axis=1)
+            true_bools = np.argmax(true_labels, axis=1)
 
-        #print('Validation Accuracy: {0:.4f}, F1: {1:.4f}, Loss: {2:.4f}'.format(val_f1, val_acc, avg_val_loss))
-        #print(classification_report(np.array(true_labels), pred_bools, target_names=label_cols) )
-        print("Epoch {0}\t Train Loss: {1:.4f}\t Val Loss {2:.4f}\t Val Acc: {3:.4f}\t Val F1: {4:.4f}".\
-          format(epoch_i +1, avg_train_loss, avg_val_loss, val_acc, val_f1))
+            val_f1 = f1_score(true_bools, pred_bools, average=None) * 100
+            val_f1 = val_f1[1]  # return f1 for  class 1
+            val_acc = (
+                pred_bools == true_bools).astype(int).sum() / len(pred_bools)
 
-        # Measure how long the validation run took.
-        validation_time = time.ctime(time.time() - t0)
-        print("Total validation_time took {:} (h:mm:ss)".format(validation_time))
+            #print('Validation Accuracy: {0:.4f}, F1: {1:.4f}, Loss: {2:.4f}'.format(val_f1, val_acc, avg_val_loss))
+            #print(classification_report(np.array(true_labels), pred_bools, target_names=label_cols) )
+            print("Epoch {0}\t Train Loss: {1:.4f}\t Val Loss {2:.4f}\t Val Acc: {3:.4f}\t Val F1: {4:.4f}".\
+                format(epoch_i +1, avg_train_loss, avg_val_loss, val_acc, val_f1))
 
-        #print("  Validation Loss: {0:.2f}".format(val_f1_accuracy))
-        #print("  Validation took: {:}".format(validation_time))
+            # Measure how long the validation run took.
+            validation_time = time.time() - t1
+            print("Total val_time took {0:.2f} minutes ".format(validation_time/60))
 
-        # Record all statistics from this epoch.
-        training_stats.append({
-            'epoch': epoch_i + 1,
-            'Training Loss': avg_train_loss,
-            'Valid. Loss': avg_val_loss,
-            'Valid. Accur.': val_f1,
-            'Best F1': best_score,
-            'Best epoch': best_epoch
-            #'Training Time': training_time,
-            #'Validation Time': validation_time
-        })
+            #print("  Validation Loss: {0:.2f}".format(val_f1_accuracy))
+            #print("  Validation took: {:}".format(validation_time))
 
-        # early stopping
-        if val_f1 > best_score:
-            best_score = val_f1
-            best_epoch = epoch_i + 1
-            torch.save(copy.deepcopy(model.state_dict()), model_path)
-            print("model saved")
-            cnt = 0
+            # Record all statistics from this epoch.
+            training_stats.append({
+                'epoch': epoch_i + 1,
+                'Training Loss': avg_train_loss,
+                'Valid. Loss': avg_val_loss,
+                'Valid. Accur.': val_f1,
+                'Best F1': best_score,
+                'Best epoch': best_epoch
+                #'Training Time': training_time,
+                #'Validation Time': validation_time
+            })
+
+            # early stopping
+            if val_f1 > best_score:
+                best_score = val_f1
+                best_epoch = epoch_i + 1
+                torch.save(copy.deepcopy(model.state_dict()), model_path)
+                print("model saved")
+                cnt = 0
+            else:
+                cnt += 1
+                if cnt == patience:
+                    print("\n")
+                    print("early stopping at epoch {0}".format(epoch_i + 1))
+                    break
+
+            print("")
+            #print("Training complete!")
+
+            print("Total training took {0:.2f} minutes".format((time.time()-total_t0)/60))
         else:
-            cnt += 1
-            if cnt == patience:
-                print("\n")
-                print("early stopping at epoch {0}".format(epoch_i + 1))
-                break
-
-    print("")
-    #print("Training complete!")
-
-    print("Total training took {:} (h:mm:ss)".format(time.ctime(time.time()-total_t0)))
-    
+            training_stats = 0
+            print(avg_train_loss)
+        
     return model, training_stats
 
+# %%
 if __name__ == "__main__":
 
     # If there's a GPU available...
     if torch.cuda.is_available():    
-        # Tell PyTorch to use the GPU.    
+        # Tell PyTorch to use the GPU. 
+        id = 1 
+        torch.cuda.set_device(1)
         device = torch.device("cuda")
         print('There are %d GPU(s) available.' % torch.cuda.device_count())
-        print('We will use the GPU:', torch.cuda.get_device_name(0))
+        print('We will use the GPU:', torch.cuda.get_device_name(id))
+        print(torch.cuda.current_device())
     # If not...
     else:
         print('No GPU available, using the CPU instead.')
@@ -496,21 +531,26 @@ if __name__ == "__main__":
     para_map = pickle.load(open("/research/rliu/fraud/data/mda/paragraphs_1994_2016.pkl","rb"))
     pos_neg_pair = pd.read_csv('./data/pos_neg_pair.csv')
     pos_neg_pair = pos_neg_pair.dropna()
+
     print('successfully load data ...')
-    df = pos_neg_pair.copy()
+
+    pos_index = pos_neg_pair[pos_neg_pair.fraud == 1].index
+    neg_index = pos_neg_pair[pos_neg_pair.fraud == 0].sample(len(pos_index)).index
+    df = pos_neg_pair.loc[neg_index.append(pos_index),:]
+    print(df.shape)
 
 
     emb_dim = 768
-    wrd_len = 100
-    para_len = 60
+    wrd_len = 50 #100
+    para_len = 30 #60
     num_filters = 128
-    kernel_sizes =  (10,50)
-    kernel_sizes2 =  (2,2)
-    dropout_rate = 0.3
+    kernel_sizes =  (10,10)
+    kernel_sizes2 =  (1,1) #(2,2)
+    dropout_rate = 0.5
     num_classes=2.0
     batch_size = 16
     para_map = para_map
-    class_weight = 10
+    class_weight = 1
 
     result = []
     label_cols = ['fraud']
@@ -540,7 +580,7 @@ if __name__ == "__main__":
 
         fold = 0
 
-        skf = StratifiedKFold(n_splits=2, random_state=0, shuffle=True)
+        skf = StratifiedKFold(n_splits=3, random_state=0, shuffle=True)
 
         for train_index, test_index in skf.split(x_key, y):
 
@@ -552,6 +592,7 @@ if __name__ == "__main__":
             X_test = torch.tensor(X_test)
 
             Y_train, Y_test = y[train_index], y[test_index]
+            print('train fraud', sum(Y_train),'test fraud', sum(Y_test))
 
             Y_train = pd.get_dummies(Y_train).values
             Y_train = torch.tensor(Y_train)
@@ -590,7 +631,7 @@ if __name__ == "__main__":
             model.to(device)
 
 
-            model, training_stats = train_model(model, num_classes, para_len, train_dataloader, validation_dataloader, \
+            model, training_stats = train_model(model, num_classes, para_len, wrd_len, train_dataloader, validation_dataloader, \
                                                             model_path = model_name, class_weight = class_weight,\
                                                             optimizer=None, scheduler=None, epochs = 20)
 
@@ -616,10 +657,14 @@ if __name__ == "__main__":
 
 
             result.append([col, fold, p[1], r[1], f[1], training_stats[-1]["Best epoch"]])
-            result.to_csv('./result/simple_siamese.csv')
+            with open("./result/simple_siamese.pkl", "wb") as fp:   #Pickling
+                pickle.dump(result, fp)
             
             torch.cuda.empty_cache()
             get_free_gpu()
     print('=== finish  === ')
+
+# %%
+
 
 
