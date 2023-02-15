@@ -1,0 +1,185 @@
+There are 2 GPU(s) available.
+We will use the GPU: NVIDIA GeForce GTX 1080 Ti
+1
+
+
+None
+successfully load data ...
+(3348, 5)
+Loading BERT tokenizer...
+Some weights of the model checkpoint at bert-base-uncased were not used when initializing BertModel: ['cls.predictions.decoder.weight', 'cls.predictions.bias', 'cls.predictions.transform.dense.bias', 'cls.seq_relationship.weight', 'cls.seq_relationship.bias', 'cls.predictions.transform.LayerNorm.weight', 'cls.predictions.transform.dense.weight', 'cls.predictions.transform.LayerNorm.bias']
+- This IS expected if you are initializing BertModel from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing BertModel from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+
+------------
+fraud
+------------
+
+fold 0 
+
+train fraud 558 test fraud 279
+
+======== Epoch 1 / 20 ========
+Training...
+Truncation was not explicitly activated but `max_length` is provided a specific value, please use `truncation=True` to explicitly truncate examples to max length. Defaulting to 'longest_first' truncation strategy. If you encode pairs of sequences (GLUE-style) with the tokenizer you can select this strategy more precisely by providing a specific strategy to `truncation`.
+Total training_time took 12.59 minutes 
+
+Running Validation...
+Epoch 1	 Train Loss: 3.1047	 Val Loss 0.9812	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.4932
+Total val_time took 6.09 minutes 
+model saved
+
+Total training took 18.69 minutes
+
+======== Epoch 2 / 20 ========
+Training...
+Total training_time took 12.50 minutes 
+
+Running Validation...
+Epoch 2	 Train Loss: 0.9459	 Val Loss 0.9298	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.4986
+Total val_time took 6.09 minutes 
+model saved
+
+Total training took 37.30 minutes
+
+======== Epoch 3 / 20 ========
+Training...
+Total training_time took 13.92 minutes 
+
+Running Validation...
+Epoch 3	 Train Loss: 0.9291	 Val Loss 0.9255	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.5007
+Total val_time took 7.34 minutes 
+model saved
+
+Total training took 58.57 minutes
+
+======== Epoch 4 / 20 ========
+Training...
+Total training_time took 12.35 minutes 
+
+Running Validation...
+Epoch 4	 Train Loss: 0.9277	 Val Loss 0.9267	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.4803
+Total val_time took 5.98 minutes 
+
+Total training took 76.89 minutes
+
+======== Epoch 5 / 20 ========
+Training...
+Total training_time took 12.34 minutes 
+
+Running Validation...
+Epoch 5	 Train Loss: 0.9283	 Val Loss 0.9262	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.5000
+Total val_time took 5.95 minutes 
+
+Total training took 95.18 minutes
+
+======== Epoch 6 / 20 ========
+Training...
+Total training_time took 12.34 minutes 
+
+Running Validation...
+Epoch 6	 Train Loss: 0.9288	 Val Loss 0.9268	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.5000
+Total val_time took 5.95 minutes 
+
+Total training took 113.48 minutes
+
+======== Epoch 7 / 20 ========
+Training...
+Total training_time took 12.33 minutes 
+
+Running Validation...
+Epoch 7	 Train Loss: 0.9266	 Val Loss 0.9264	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.5000
+Total val_time took 5.94 minutes 
+
+Total training took 131.76 minutes
+
+======== Epoch 8 / 20 ========
+Training...
+Total training_time took 12.34 minutes 
+
+Running Validation...
+Epoch 8	 Train Loss: 0.9264	 Val Loss 0.9273	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.5000
+Total val_time took 5.95 minutes 
+
+
+early stopping at epoch 8
+load the best model ... 
+/home/jujun/.conda/envs/jujun_env/lib/python3.11/site-packages/sklearn/metrics/_classification.py:1344: UndefinedMetricWarning: Precision and F-score are ill-defined and being set to 0.0 in labels with no predicted samples. Use `zero_division` parameter to control this behavior.
+  _warn_prf(average, modifier, msg_start, len(result))
+Precision: 0.0000, Recall: 0.0000, F1: 0.0000, Loss: 0.9265, AUC: 0.5007
+/home/jujun/.conda/envs/jujun_env/lib/python3.11/site-packages/sklearn/metrics/_classification.py:1344: UndefinedMetricWarning: Precision and F-score are ill-defined and being set to 0.0 in labels with no predicted samples. Use `zero_division` parameter to control this behavior.
+  _warn_prf(average, modifier, msg_start, len(result))
+/home/jujun/.conda/envs/jujun_env/lib/python3.11/site-packages/sklearn/metrics/_classification.py:1344: UndefinedMetricWarning: Precision and F-score are ill-defined and being set to 0.0 in labels with no predicted samples. Use `zero_division` parameter to control this behavior.
+  _warn_prf(average, modifier, msg_start, len(result))
+/home/jujun/.conda/envs/jujun_env/lib/python3.11/site-packages/sklearn/metrics/_classification.py:1344: UndefinedMetricWarning: Precision and F-score are ill-defined and being set to 0.0 in labels with no predicted samples. Use `zero_division` parameter to control this behavior.
+  _warn_prf(average, modifier, msg_start, len(result))
+              precision    recall  f1-score   support
+
+           0       0.75      1.00      0.86       837
+           1       0.00      0.00      0.00       279
+
+    accuracy                           0.75      1116
+   macro avg       0.38      0.50      0.43      1116
+weighted avg       0.56      0.75      0.64      1116
+
+
+
+
+fold 1 
+
+train fraud 558 test fraud 279
+
+======== Epoch 1 / 20 ========
+Training...
+Total training_time took 12.34 minutes 
+
+Running Validation...
+Epoch 1	 Train Loss: 2.8991	 Val Loss 1.0000	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.4964
+Total val_time took 5.97 minutes 
+model saved
+
+Total training took 18.32 minutes
+
+======== Epoch 2 / 20 ========
+Training...
+Total training_time took 12.29 minutes 
+
+Running Validation...
+Epoch 2	 Train Loss: 0.9580	 Val Loss 0.9342	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.5039
+Total val_time took 5.99 minutes 
+model saved
+
+Total training took 36.62 minutes
+
+======== Epoch 3 / 20 ========
+Training...
+Total training_time took 12.32 minutes 
+
+Running Validation...
+Epoch 3	 Train Loss: 0.9311	 Val Loss 0.9261	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.5023
+Total val_time took 5.98 minutes 
+
+Total training took 54.92 minutes
+
+======== Epoch 4 / 20 ========
+Training...
+Total training_time took 12.32 minutes 
+
+Running Validation...
+Epoch 4	 Train Loss: 1.2158	 Val Loss 0.9267	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.5019
+Total val_time took 5.98 minutes 
+
+Total training took 73.22 minutes
+
+======== Epoch 5 / 20 ========
+Training...
+Total training_time took 12.29 minutes 
+
+Running Validation...
+Epoch 5	 Train Loss: 0.9285	 Val Loss 0.9263	 Val Acc: 0.7500	 Val F1: 0.0000	 Val AUC: 0.4993
+Total val_time took 5.96 minutes 
+
+Total training took 91.47 minutes
+
+======== Epoch 6 / 20 ========
+Training...
