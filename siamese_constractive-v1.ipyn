@@ -1,0 +1,58 @@
+
+------------
+fraud
+------------
+
+fold 0 
+
+train fraud 200 test fraud 100
+
+======== Epoch 1 / 20 ========
+Training...
+batch accuracy for size 64: 0.578125
+train step loss: 0 -- 0.6926181316375732
+train step total_train_loss: 0 -- 0.6926181316375732
+batch accuracy for size 64: 0.40625
+train step loss: 1 -- 0.6963592767715454
+train step total_train_loss: 1 -- 1.3889774084091187
+batch accuracy for size 64: 0.53125
+train step loss: 2 -- 0.692570686340332
+train step total_train_loss: 2 -- 2.0815480947494507
+batch accuracy for size 64: 0.484375
+train step loss: 3 -- 0.6938744783401489
+train step total_train_loss: 3 -- 2.7754225730895996
+batch accuracy for size 64: 0.578125
+train step loss: 4 -- 0.6914659738540649
+train step total_train_loss: 4 -- 3.4668885469436646
+batch accuracy for size 64: 0.4375
+train step loss: 5 -- 0.6944339871406555
+train step total_train_loss: 5 -- 4.16132253408432
+batch accuracy for size 16: 0.5625
+train step loss: 6 -- 0.6901759505271912
+train step total_train_loss: 6 -- 4.851498484611511
+Total training_time took 2.26 minutes 
+
+Running Validation...
+Epoch 1	 Train Loss: 0.6931	 Val Loss 0.6934	 Val Acc: 0.5000	 Val F1: 0.0000	 Val AUC: 0.4694
+Total val_time took 1.16 minutes 
+model saved
+
+Total training took 3.43 minutes
+
+======== Epoch 2 / 20 ========
+Training...
+batch accuracy for size 64: 0.4375
+train step loss: 0 -- 0.6948555707931519
+train step total_train_loss: 0 -- 0.6948555707931519
+batch accuracy for size 64: 0.5625
+train step loss: 1 -- 0.6892439723014832
+train step total_train_loss: 1 -- 1.384099543094635
+batch accuracy for size 64: 0.5
+train step loss: 2 -- 0.6929851770401001
+train step total_train_loss: 2 -- 2.077084720134735
+batch accuracy for size 64: 0.546875
+train step loss: 3 -- 0.6908211708068848
+train step total_train_loss: 3 -- 2.76790589094162
+batch accuracy for size 64: 0.484375
+train step loss: 4 -- 0.693016767501831
+train step total_train_loss: 4 -- 3.460922658443451
