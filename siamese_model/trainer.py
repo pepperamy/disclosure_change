@@ -12,6 +12,7 @@ import torch.nn as nn
 import random
 import utils
 import copy
+import pickle
 
 def model_eval(model, config, validation_dataloader, num_labels, class_weight=None):
     #tokenized_texts = []
@@ -361,3 +362,139 @@ def train_model(model, config,  train_dataloader, validation_dataloader,
             print(avg_train_loss)
         
     return model, training_stats
+
+def training_loop(config):
+    # load data
+    para_map = pickle.load(open("/research/rliu/fraud/data/mda/paragraphs_1994_2016.pkl","rb"))
+    pos_neg_pair = pd.read_csv('./data/pos_neg_pair.csv')
+    pos_neg_pair = pos_neg_pair.dropna()
+
+    config.imbalance =False
+    if not config.imbalance:
+        pos_index = pos_neg_pair[pos_neg_pair.fraud == 1].index[0:5]
+        neg_index = pos_neg_pair[pos_neg_pair.fraud == 0].sample(len(pos_index)).index
+        df = pos_neg_pair.loc[neg_index.append(pos_index),:]
+        print(df.shape)
+    else:
+        pos_cik = list(set(pos_neg_pair[pos_neg_pair.fraud == 1].cik))
+        neg_cik = list(set(pos_neg_pair[pos_neg_pair.fraud == 0].cik))
+        neg_cik = [c for c in neg_cik if c not in pos_cik]
+        neg_cik = random.sample(neg_cik, len(pos_cik))
+        df = pos_neg_pair[pos_neg_pair.cik.isin(pos_cik[0:10] + neg_cik[0:10])]
+        print(df.shape)
+    print('successfully load data ...')
+    
+    
+    config.set_parm_map(para_map)
+
+
+    set_ct_loss = False
+    result = []
+    val_label_save = []
+    val_true_label_save = []
+    label_cols = ['fraud']
+
+    # global my_ct_loss
+    # global my_sim
+    # global my_label
+
+    #embedding
+    print('Loading BERT tokenizer...')
+    tokenizer = config.tokenizer
+    bert_model = config.bert_model
+
+    for col in label_cols:
+        print("\n------------")
+        print(col)
+        print("------------")
+
+        y = df[col].astype(int).values
+        x_key = df[['cik', 'fyear', 'fyear_bf']].values
+
+        fold = 0
+
+        skf = StratifiedKFold(n_splits=3, random_state=0, shuffle=True)
+
+        for train_index, test_index in skf.split(x_key, y):
+
+            print("\nfold {} \n".format(fold))
+
+            fold += 1
+            X_train, X_test = x_key[train_index], x_key[test_index]
+            X_train = torch.tensor(X_train)
+            X_test = torch.tensor(X_test)
+
+            Y_train, Y_test = y[train_index], y[test_index]
+            print('train fraud', sum(Y_train),'test fraud', sum(Y_test))
+
+            Y_train = pd.get_dummies(Y_train).values
+            Y_train = torch.tensor(Y_train)
+
+            Y_test = pd.get_dummies(Y_test).values
+            Y_test = torch.tensor(Y_test)
+
+            train_dataset = TensorDataset(X_train, Y_train)
+            val_dataset = TensorDataset(X_test, Y_test)
+
+            train_dataloader = DataLoader(
+                train_dataset,  # The training samples.
+                sampler=RandomSampler(train_dataset),  # Select batches randomly
+                batch_size = config.batch_size  # Trains with this batch size.
+            )
+
+            validation_dataloader = DataLoader(
+                val_dataset,  # The validation samples.
+                sampler=RandomSampler(
+                    val_dataset),  # Pull out batches sequentially.
+                batch_size= config.batch_size  # Evaluate with this batch size.
+            )
+
+            if config.class_weight == None:
+                pass
+            else:
+                train_sample_weight = np.array(
+                    [config.class_weight if i[1] == 1 else 1 for i in Y_train])
+                test_sample_weight = np.array(
+                    [config.class_weight if i[1] == 1 else 1 for i in Y_test])
+
+            model_name = config.model_path + str(fold)
+            #model = cnn(emb_dim, seq_len, num_filters, kernel_sizes, num_labels)
+            model = config.simple_siamese(config)
+            model.to(config.device)
+
+
+            model, training_stats = train_model(model, config, train_dataloader, validation_dataloader, \
+                                                model_path = model_name, class_weight = config.class_weight,\
+                                                optimizer=None, scheduler=None, epochs = 20)
+
+            print("load the best model ... ")
+
+            model.load_state_dict(torch.load(model_name))
+
+            # show performance of best model
+            model.eval()
+            pred_labels, true_labels,avg_val_loss = model_eval(model, \
+                                                    validation_dataloader, num_classes, class_weight = class_weight)
+
+            pred_bools = np.argmax(pred_labels, axis = 1)
+            print("np.argmax for pred_labels", pred_labels)
+            true_bools = np.argmax(true_labels, axis = 1)
+            print("np.argmax for true_labels", true_labels)
+
+            p, r, f, _ = precision_recall_fscore_support(true_bools,pred_bools, pos_label = 1)
+            #val_f1 = f1_score(true_bools,pred_bools, average = None)*100
+            #val_f1 = val_f1[1] # return f1 for  class 1
+            val_acc = (pred_bools == true_bools).astype(int).sum()/len(pred_bools)
+            val_auc = roc_auc_score(true_bools, pred_labels[:,1])
+
+            print('Precision: {0:.4f}, Recall: {1:.4f}, F1: {2:.4f}, Loss: {3:.4f}, AUC: {4:.4f}'.format(p[1], r[1], f[1], avg_val_loss, val_auc))
+            print(classification_report(true_bools, pred_bools) )
+
+
+            result.append([col, fold, p[1], r[1], f[1], val_acc, val_auc,training_stats[-1]["Best epoch"]])
+            with open("./result/simple_siamese.pkl", "wb") as fp:   #Pickling
+                pickle.dump(result, fp)
+            
+            torch.cuda.empty_cache()
+            get_free_gpu()
+    print('=== finish  === ')    

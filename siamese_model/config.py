@@ -4,7 +4,6 @@ import random
 import pandas as pd
 import numpy as np
 
-class config:
     def __init__(self):
         self.emb_dim = 768
         self.wrd_len = 64  # 100
@@ -21,9 +20,10 @@ class config:
         self.class_weight = 1
         self.test_mode = False
         self.set_ct_loss = False
-        self.model_path = ''
+        self.model_path =  "./model/simple_siamese_"
         self.verbose_mode = True
         self.set_ct_loss = False
+        self.imbalance = False
 
         if torch.cuda.is_available():
             # Tell PyTorch to use the GPU.
