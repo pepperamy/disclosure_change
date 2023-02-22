@@ -14,7 +14,7 @@ import utils
 import copy
 import pickle
 
-def model_eval(model, config, validation_dataloader, num_labels, class_weight=None):
+def model_eval(model, config, validation_dataloader):
     #tokenized_texts = []
     true_labels = []
     pred_labels = []
@@ -35,7 +35,7 @@ def model_eval(model, config, validation_dataloader, num_labels, class_weight=No
         tk_batch_bf = []
         #print('val batch',batch)
         for t in b_input_key.detach().to('cpu').numpy():
-            tk, tk_bf = utils.get_text_embedding(t[0], t[1], t[2], tokenizer, bert_model, para_map, para_len, wrd_len=wrd_len)
+            tk, tk_bf = utils.get_text_embedding(t[0], t[1], t[2], config)
             if tk.size()[0] == config.para_len:              
                 tk_batch.append(tk)
                 tk_batch_bf.append(tk_bf)
@@ -52,7 +52,7 @@ def model_eval(model, config, validation_dataloader, num_labels, class_weight=No
         # print('val 2 free gpu',get_free_gpu())
 
         with torch.no_grad():
-
+            print('input shape',tk_batch.shape, tk_batch_bf.shape)
             logits, x1, x2 = model(tk_batch, tk_batch_bf)
             cos_sim = nn.CosineSimilarity(dim=1, eps=1e-6)
             sim = cos_sim(x1,x2)
@@ -66,9 +66,10 @@ def model_eval(model, config, validation_dataloader, num_labels, class_weight=No
             del tk_batch_bf           
             # print('val 3 free gpu',get_free_gpu())
             
-            if class_weight != None:
-                pos_weight = torch.tensor(class_weight).to(config.device)
+            if config.class_weight != None:
+                pos_weight = torch.tensor(config.class_weight).to(config.device)
                 # weights = torch.tensor([pos_weight]).to(device)
+                sample_weight = np.array([config.class_weight if i[1] == 1 else 1 for i in b_labels])
                 ct_loss = nn.CrossEntropyLoss() #weight = weights
                 loss_func = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
             else:
@@ -114,7 +115,7 @@ def model_eval(model, config, validation_dataloader, num_labels, class_weight=No
 
 
 def train_model(model, config,  train_dataloader, validation_dataloader, 
-                             optimizer=None, scheduler=None, epochs = 20, \
+                model_name, optimizer=None, scheduler=None, epochs = 20, \
                              patience = 5):
 
     utils.set_seed()
@@ -180,8 +181,7 @@ def train_model(model, config,  train_dataloader, validation_dataloader,
             #print('b_input_key',b_input_key)
             time_start_tk = time.time()
             for t in b_input_key.detach().to('cpu').numpy():
-                tk, tk_bf = utils.get_text_embedding(t[0], t[1], t[2], config.tokenizer, config.bert_model,\
-                     para_map, para_len, wrd_len=wrd_len)
+                tk, tk_bf = utils.get_text_embedding(t[0], t[1], t[2], config)
                 if tk.size()[0] == para_len:              
                     tk_batch.append(tk)
                     tk_batch_bf.append(tk_bf)
@@ -210,9 +210,9 @@ def train_model(model, config,  train_dataloader, validation_dataloader,
             #loss = loss_func(torch.sigmoid(logits.view(-1,num_labels)),b_labels.type_as(logits).view(-1,num_labels)) #convert labels to float for calculation
 
             # add class weight
-            if class_weight != None:
-                pos_weight = torch.tensor(class_weight).to(config.device)
-                weights = torch.tensor([pos_weight]).to(config.device)
+            if config.class_weight != None:
+                pos_weight = torch.tensor(config.class_weight).to(config.device)
+                sample_weight = np.array([config.class_weight if i[1] == 1 else 1 for i in b_labels])
                 ct_loss = nn.CrossEntropyLoss()#weight = weights
                 loss_func = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
             else:
@@ -236,7 +236,7 @@ def train_model(model, config,  train_dataloader, validation_dataloader,
             # my_label = b_labels
             # my_ct_loss = ct_loss(sim, torch.argmax(b_labels,axis=1).type_as(logits).reshape(-1,1)) 
 
-            if verbose_mode:
+            if config.verbose_mode:
                 # print("logits: ", logits)
                 # print("b_labels.type_as(logits): ", b_labels.type_as(logits))
                 
@@ -282,7 +282,6 @@ def train_model(model, config,  train_dataloader, validation_dataloader,
         print("Total training_time took {0:.2f} minutes ".format(training_time/60))
 
         # calculate the total accrurcy in this epoch
-        # print(train_true_labels[0:1])
         global lista
         global listb
         lista = train_true_labels
@@ -311,13 +310,13 @@ def train_model(model, config,  train_dataloader, validation_dataloader,
             # during evaluation.
             model.eval()
 
-            pred_labels, true_labels, avg_val_loss, val_f1, val_acc, val_auc = model_eval(
-                model,  validation_dataloader, num_labels, class_weight=class_weight)
+            pred_labels, true_labels, avg_val_loss, val_f1, val_acc, val_auc = model_eval(model,config,\
+                                                                                    validation_dataloader)
 
-            global val_label_save
-            global val_true_label_save
-            val_label_save.append(pred_labels)
-            val_true_label_save.append(true_labels)
+            # global val_label_save
+            # global val_true_label_save
+            # val_label_save.append(pred_labels)
+            # val_true_label_save.append(true_labels)
 
             # Measure how long the validation run took.
             validation_time = time.time() - t1
@@ -343,7 +342,7 @@ def train_model(model, config,  train_dataloader, validation_dataloader,
             if val_f1 > best_score:
                 best_score = val_f1
                 best_epoch = epoch_i + 1
-                torch.save(copy.deepcopy(model.state_dict()), config.model_path)
+                torch.save(copy.deepcopy(model.state_dict()), model_name)
                 print("model saved")
                 cnt = 0
             else:
@@ -363,29 +362,8 @@ def train_model(model, config,  train_dataloader, validation_dataloader,
         
     return model, training_stats
 
-def training_loop(config):
-    # load data
-    para_map = pickle.load(open("/research/rliu/fraud/data/mda/paragraphs_1994_2016.pkl","rb"))
-    pos_neg_pair = pd.read_csv('./data/pos_neg_pair.csv')
-    pos_neg_pair = pos_neg_pair.dropna()
+def training_loop(config, mymodel):
 
-    config.imbalance =False
-    if not config.imbalance:
-        pos_index = pos_neg_pair[pos_neg_pair.fraud == 1].index[0:5]
-        neg_index = pos_neg_pair[pos_neg_pair.fraud == 0].sample(len(pos_index)).index
-        df = pos_neg_pair.loc[neg_index.append(pos_index),:]
-        print(df.shape)
-    else:
-        pos_cik = list(set(pos_neg_pair[pos_neg_pair.fraud == 1].cik))
-        neg_cik = list(set(pos_neg_pair[pos_neg_pair.fraud == 0].cik))
-        neg_cik = [c for c in neg_cik if c not in pos_cik]
-        neg_cik = random.sample(neg_cik, len(pos_cik))
-        df = pos_neg_pair[pos_neg_pair.cik.isin(pos_cik[0:10] + neg_cik[0:10])]
-        print(df.shape)
-    print('successfully load data ...')
-    
-    
-    config.set_parm_map(para_map)
 
 
     set_ct_loss = False
@@ -408,8 +386,8 @@ def training_loop(config):
         print(col)
         print("------------")
 
-        y = df[col].astype(int).values
-        x_key = df[['cik', 'fyear', 'fyear_bf']].values
+        y = config.df[col].astype(int).values
+        x_key = config.df[['cik', 'fyear', 'fyear_bf']].values
 
         fold = 0
 
@@ -449,23 +427,23 @@ def training_loop(config):
                 batch_size= config.batch_size  # Evaluate with this batch size.
             )
 
-            if config.class_weight == None:
-                pass
-            else:
-                train_sample_weight = np.array(
-                    [config.class_weight if i[1] == 1 else 1 for i in Y_train])
-                test_sample_weight = np.array(
-                    [config.class_weight if i[1] == 1 else 1 for i in Y_test])
-
+            # if config.class_weight == None:
+            #     pass
+            # else:
+            #     train_sample_weight = np.array(
+            #         [config.class_weight if i[1] == 1 else 1 for i in Y_train])
+            #     test_sample_weight = np.array(
+            #         [config.class_weight if i[1] == 1 else 1 for i in Y_test])
+            #  print('ready to build model')
             model_name = config.model_path + str(fold)
-            #model = cnn(emb_dim, seq_len, num_filters, kernel_sizes, num_labels)
-            model = config.simple_siamese(config)
-            model.to(config.device)
+            # #model = cnn(emb_dim, seq_len, num_filters, kernel_sizes, num_labels)
+            # model = mymodel(config)
+            mymodel.to(config.device)
+            # print('successfully build model')
 
 
-            model, training_stats = train_model(model, config, train_dataloader, validation_dataloader, \
-                                                model_path = model_name, class_weight = config.class_weight,\
-                                                optimizer=None, scheduler=None, epochs = 20)
+            model, training_stats = train_model(mymodel, config, train_dataloader, validation_dataloader, \
+                                                model_name = model_name)
 
             print("load the best model ... ")
 
@@ -473,8 +451,9 @@ def training_loop(config):
 
             # show performance of best model
             model.eval()
-            pred_labels, true_labels,avg_val_loss = model_eval(model, \
-                                                    validation_dataloader, num_classes, class_weight = class_weight)
+            pred_labels, true_labels, avg_val_loss, val_f1, val_acc, val_auc = model_eval(model, config, validation_dataloader)
+            
+
 
             pred_bools = np.argmax(pred_labels, axis = 1)
             print("np.argmax for pred_labels", pred_labels)
@@ -492,9 +471,10 @@ def training_loop(config):
 
 
             result.append([col, fold, p[1], r[1], f[1], val_acc, val_auc,training_stats[-1]["Best epoch"]])
-            with open("./result/simple_siamese.pkl", "wb") as fp:   #Pickling
+            with open("/research/jujun/text_change/result/simple_siamese.pkl", "wb") as fp:   #Pickling
                 pickle.dump(result, fp)
             
             torch.cuda.empty_cache()
-            get_free_gpu()
+            
     print('=== finish  === ')    
+    return result, val_label_save, val_true_label_save
