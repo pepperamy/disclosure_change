@@ -86,9 +86,10 @@ def get_text_embedding(cik, fyear, fyear_bf, config):
     token_embeddings = token_embeddings.to(config.device) * masks.unsqueeze(-1).to(config.device) # (atc_num_para, #wrd_len, #dim)
     # padding paragraphs
     # print('1 token_embeddings',token_embeddings.size())
-    pad_num = config.para_len - token_embeddings.size()[0]
+    valid_len = token_embeddings.size()[0]
+    pad_num = config.para_len - valid_len
     if pad_num>0:
-        token_embeddings = F.pad(input=token_embeddings, pad=(0,0,0,0,0,pad_num))
+        token_embeddings = F.pad(input=token_embeddings, pad=(0,0,0,0,0,pad_num), value=-1e6)
         # print('2 token_embeddings',token_embeddings.size())
     elif pad_num<0:
         token_embeddings = token_embeddings[0:config.para_len]
@@ -101,11 +102,12 @@ def get_text_embedding(cik, fyear, fyear_bf, config):
     token_embeddings_bf = token_embeddings_bf.to(config.device) * masks_bf.unsqueeze(-1).to(config.device) # (atc_num_para, #wrd_len, #dim)
     # padding paragraphs
     # print('1 token_embeddings_bf',token_embeddings_bf.size())
-    pad_num_bf = config.para_len - token_embeddings_bf.size()[0]
+    valid_len_bf = token_embeddings_bf.size()[0]
+    pad_num_bf = config.para_len - valid_len_bf
     #print('pad_num_bf', pad_num_bf)
     if pad_num_bf>0:
         # print('>0')
-        token_embeddings_bf = F.pad(input=token_embeddings_bf, pad=(0,0,0,0,0,pad_num_bf))
+        token_embeddings_bf = F.pad(input=token_embeddings_bf, pad=(0,0,0,0,0,pad_num_bf), value=-1e6)
         # print('2 token_embeddings_bf',token_embeddings_bf.size())
     elif pad_num_bf<0:
         # print('<0')
@@ -114,7 +116,7 @@ def get_text_embedding(cik, fyear, fyear_bf, config):
     else:
         token_embeddings_bf = token_embeddings_bf
 
-    return token_embeddings, token_embeddings_bf
+    return token_embeddings, token_embeddings_bf, valid_len, valid_len_bf
 
 def set_seed():
     seed_val = 1234

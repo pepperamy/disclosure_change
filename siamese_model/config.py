@@ -14,7 +14,15 @@ class config:
         self.wrd_len = 64  # 100
         self.para_len = 32  # 60
         self.num_filters = 128
+
+        #attention
+        self.key_size = 60
+        self.value_size = 60
+        self.query_size = 60
+
+        #model
         self.kernel_sizes = (1, 10)
+        self.kernel_sizes1 = (1,5)
         self.kernel_sizes2 = (5, 3)  # (2,2)
         self.kernel_sizes3 = (3, 3)
         self.dropout_rate = 0.2
@@ -22,6 +30,7 @@ class config:
         self.num_labels = 2
         self.batch_size = 64
         self.class_weight = 1
+
         self.test_mode = False
         self.set_ct_loss = False
         self.model_path =  "/research/jujun/text_change/model/simple_siamese_"
