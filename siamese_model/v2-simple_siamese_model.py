@@ -4,12 +4,68 @@ import torch.nn as nn
 import torch
 import math
 
+class DotProductAttention(nn.Module):
+    """Scaled dot product attention."""
+    def __init__(self, dropout, **kwargs):
+        super(DotProductAttention, self).__init__(**kwargs)
+        self.dropout = nn.Dropout(dropout)
+
+    # Shape of `queries`: (`batch_size`, no. of queries, `d`)
+    # Shape of `keys`: (`batch_size`, no. of key-value pairs, `d`)
+    # Shape of `values`: (`batch_size`, no. of key-value pairs, value
+    # dimension)
+    # Shape of `valid_lens`: (`batch_size`,) or (`batch_size`, no. of queries)
+    def masked_softmax(self, config, scores, mask):
+        '''perform softmax operation by masking element on the paragraph dimension'''
+        # mask contian 1 or 0
+        # the shape of mask shoube be equal to num_para_1 * num_para_2
+        # mask --> (#batch, num_para, num_para_bf)
+        # scores --> (#batch, #num_para_1 * num_para_2,  #num_words, #num_words)
+
+        # expand mask
+        mask = mask.reshape(scores.size(0),scores.size(1))
+        mask = mask.expand(scores.size(0), scores.size(1), scores.size(2), scores.size(3))
+        # mask --> (#batch, #num_para_1 * num_para_2,  #num_words, #num_words)
+        score_mask = torch.multiply(scores, mask) # should be pairwise
+        # score_mask --> (#batch, #num_para_1 * num_para_2,  #num_words, #num_words)
+        score_mask = score_mask.reshape(config.batch_size, config.para_len,\
+                                        config.para_len, config.wrd_len, config.wrd_len)
+        # score_mask --> (#batch, #num_para_1, #num_para_2,  #num_words, #num_words)
+        score_softmax = nn.functional.softmax(scores, dim=1)
+        score_softmax = score_mask.reshape(scores.shape)
+        # score_softmax --> (#batch, #num_para_1 * num_para_2,  #num_words, #num_words)
+        return score_softmax
+
+
+
+
+    def forward(self, queries, keys, values, mask):
+        d = queries.shape[-1]
+        # Set `transpose_b=True` to swap the last two dimensions of `keys`
+
+        # queries -> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
+        # keys -> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
+        # socre -> queries * keys.transpose -> (#batch, #num_para_1 * num_para_2,  #num_words, #num_words)
+
+        scores = torch.matmul(queries, keys.transpose(-2,-1)) / math.sqrt(d)
+    
+        self.attention_weights = self.masked_softmax(scores, mask) 
+        # attention_weights --> (#batch, #num_para_1 * num_para_2,  #num_words, #num_words)
+
+        # values --> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
+        return torch.multiply(self.dropout(self.attention_weights), values)
+        # output --> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
+
+
+
 class self_attention(nn.Module):
-    def __init__(self, config, \
-                  dropout, bias=False, **kwargs):
-        self.q = nn.Linear(config.query_size, config.emb_dim, bias=bias)
-        self.k = nn.Linear(config.key_size, config.emb_dim, bias=bias)
-        self.v = nn.Linear(config.value_size, config.emb_dim, bias=bias)
+    def __init__(self, config, mask,\
+                bias=False, **kwargs):
+        self.W_q = nn.Linear(config.query_size, config.emb_dim, bias=bias)
+        self.W_k = nn.Linear(config.key_size, config.emb_dim, bias=bias)
+        self.W_v = nn.Linear(config.value_size, config.emb_dim, bias=bias)
+        self.mask = mask
+        self.attention = DotProductAttention(config.dropout_rate)
         # self.W_o = nn.Linear(dimension, dimension, bias=bias)
 
     def att_transpose(self, config, diff_metrix):
@@ -17,24 +73,34 @@ class self_attention(nn.Module):
         diff_new = diff_metrix.reshape(config.batch_size, config.emb_dim, \
                                        config.para_len*config.para_len, config.wrd_len)
         # diff_new --> (#batch, #dimension, #num_para_1 * num_para_2, #num_words)
-
+        diff_new = torch.permute(diff_new, (0,3,4,1))
+        # diff_new --> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
         return diff_new
+    
+    def att_transpose_back(self, config, attention_w):
+        # attention_w --> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
+        attention_new = attention_w.reshape(config.batch_size, config.para_len,
+                                       config.para_len, config.wrd_len, config.emb_dim)
+        # attention_new --> (#batch, #num_para_1, #num_para_2,  #num_words, #dimension)
+        attention_new = torch.permute(attention_new, (0,4,1,2,3))
+        # attention_new --> (#batch, #dimension, #num_para_1, #num_para_2,  #num_words)
+        return attention_new
 
     def forward(self, config, diff_metrix, mask):
-
         diff_metrix = self.att_transpose(config, diff_metrix)
+        # after transpose diff_metrix --> 
+        # (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
 
-        
-
-
-        d = self.q.shape[-1]
-        scores = torch.bmm(self.q, self.k.transpose(1,2)) / math.sqrt(d)
-
-
-
-
-
-
+        # question: should I mask before W_q, W_k, W_v or after?
+        # if I mask before, the number of parameters in  W is smaller
+        queries = self.W_q(diff_metrix) # queries -> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
+        keys = self.W_k(diff_metrix) # keys -> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
+        values = self.W_v(diff_metrix) # values -> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
+        attention_w = self.attention(queries, keys, values, mask)
+        # attention_w --> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
+        attention_w = self.att_transpose_back(config, attention_w)
+        # attention_w --> (#batch, #num_para_1, #num_para_2,  #num_words, #dimension)
+        return attention_w
 
 
 # define model
@@ -68,7 +134,6 @@ class simple_siamese(nn.Module):
             nn.MaxPool2d((2,2), padding=0),
         )
 
-        
         linear_size = 64
         self.fc1 = nn.Linear(1056, linear_size)
         self.fc2 = nn.Linear(linear_size, int(self.num_classes))
@@ -114,6 +179,8 @@ class simple_siamese(nn.Module):
 
         #get difference metrix
         x = torch.abs(torch.sub(x1,x2)) # -->(#batch, #dimension, #num_para_2, #num_para_1, #num_words)
+        
+        # attention 
         
         # print(x.size())
         x = self.conv2(x)

@@ -16,16 +16,16 @@ class config:
         self.num_filters = 128
 
         #attention
-        self.key_size = 60
-        self.value_size = 60
-        self.query_size = 60
+        self.key_size = 64
+        self.value_size = 64
+        self.query_size = 64
 
         #model
         self.kernel_sizes = (1, 10)
         self.kernel_sizes1 = (1,5)
         self.kernel_sizes2 = (5, 3)  # (2,2)
         self.kernel_sizes3 = (3, 3)
-        self.dropout_rate = 0.2
+        self.dropout_rate = 0.5
         self.num_classes = 2.0
         self.num_labels = 2
         self.batch_size = 64
