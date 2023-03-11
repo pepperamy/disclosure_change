@@ -3,6 +3,18 @@
 import torch.nn as nn
 import torch
 import math
+from torchmetrics.functional import pairwise_cosine_similarity
+
+class AddNorm(nn.Module):
+    """残差连接后进行层规范化"""
+    def __init__(self, normalized_shape, dropout, **kwargs):
+        super(AddNorm, self).__init__(**kwargs)
+        self.dropout = nn.Dropout(dropout)
+        self.ln = nn.LayerNorm(normalized_shape)
+
+    def forward(self, X, Y):
+        return self.ln(self.dropout(Y) + X)
+
 
 class DotProductAttention(nn.Module):
     """Scaled dot product attention."""
@@ -53,19 +65,19 @@ class DotProductAttention(nn.Module):
         # attention_weights --> (#batch, #num_para_1 * num_para_2,  #num_words, #num_words)
 
         # values --> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
-        return torch.multiply(self.dropout(self.attention_weights), values)
+        return torch.multiply(self.dropout(self.attention_weights), values) # formula: Q * K.T * V
         # output --> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
 
 
 
-class self_attention(nn.Module):
+class Self_Attention(nn.Module):
     def __init__(self, config, mask,\
                 bias=False, **kwargs):
         self.W_q = nn.Linear(config.query_size, config.emb_dim, bias=bias)
         self.W_k = nn.Linear(config.key_size, config.emb_dim, bias=bias)
         self.W_v = nn.Linear(config.value_size, config.emb_dim, bias=bias)
         self.mask = mask
-        self.attention = DotProductAttention(config.dropout_rate)
+        self.dotattention = DotProductAttention(config.dropout_rate)
         # self.W_o = nn.Linear(dimension, dimension, bias=bias)
 
     def att_transpose(self, config, diff_metrix):
@@ -96,7 +108,7 @@ class self_attention(nn.Module):
         queries = self.W_q(diff_metrix) # queries -> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
         keys = self.W_k(diff_metrix) # keys -> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
         values = self.W_v(diff_metrix) # values -> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
-        attention_w = self.attention(queries, keys, values, mask)
+        attention_w = self.dotattention(queries, keys, values, mask)
         # attention_w --> (#batch, #num_para_1 * num_para_2,  #num_words, #dimension)
         attention_w = self.att_transpose_back(config, attention_w)
         # attention_w --> (#batch, #num_para_1, #num_para_2,  #num_words, #dimension)
@@ -107,7 +119,7 @@ class self_attention(nn.Module):
 class simple_siamese(nn.Module):
     def __init__(self, config):
         super().__init__()
-        
+        self.config = config
         self.emb_dim = config.emb_dim
         self.wrd_len = config.wrd_len
         self.para_len = config.para_len
@@ -115,6 +127,8 @@ class simple_siamese(nn.Module):
         self.kernel_sizes = config.kernel_sizes
         self.kernel_sizes2 = config.kernel_sizes2
         self.kernel_sizes3 = config.kernel_sizes3
+
+        
         self.dropout_rate = config.dropout_rate
         self.num_classes = config.num_classes
         self.test_mode = config.test_mode
@@ -163,6 +177,7 @@ class simple_siamese(nn.Module):
         x2 = torch.permute(input2, (0,3,1,2))
 
         #calculate similarity between all pairs of paragraphs
+        
 
         
 
@@ -179,8 +194,11 @@ class simple_siamese(nn.Module):
 
         #get difference metrix
         x = torch.abs(torch.sub(x1,x2)) # -->(#batch, #dimension, #num_para_2, #num_para_1, #num_words)
-        
-        # attention 
+
+        # attention
+        attention_calculate = Self_Attention(self.config, mask)
+        attention_weight = attention_calculate(self.config, x)
+        # attention_weight -> (#batch, #num_para_1, #num_para_2,  #num_words, #dimension)
         
         # print(x.size())
         x = self.conv2(x)
